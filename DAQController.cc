@@ -7,6 +7,7 @@
 #include "Options.hh"
 #include "StraxFormatter.hh"
 #include "MongoLog.hh"
+#include "DataPacket.hh"
 #include <algorithm>
 #include <bitset>
 #include <chrono>
@@ -199,8 +200,8 @@ void DAQController::ReadData(int link){
   uint32_t board_status = 0;
   int readcycler = 0;
   int err_val = 0;
-  std::list<std::unique_ptr<data_packet>> local_buffer;
-  std::unique_ptr<data_packet> dp;
+  std::list<data_packet> local_buffer;
+  data_packet dp;
   int words = 0;
   int local_size(0);
   fRunning[link] = true;

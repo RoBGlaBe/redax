@@ -117,10 +117,10 @@ void StraxFormatter::GenerateArtificialDeadtime(int64_t timestamp, const std::sh
   return;
 }
 
-void StraxFormatter::ProcessDatapacket(std::unique_ptr<data_packet> dp){
+void StraxFormatter::ProcessDatapacket(data_packet dp){
   // Take a buffer and break it up into one document per channel
   struct timespec dp_start, dp_end, ev_start, ev_end;
-  auto it = dp->buff.begin();
+  auto it = dp.buff.begin();
   int evs_this_dp(0), words(0);
   bool missed = false;
   std::map<int, int> dpc;
@@ -130,7 +130,7 @@ void StraxFormatter::ProcessDatapacket(std::unique_ptr<data_packet> dp){
       missed = true; // it works out
       clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ev_start);
       words = (*it)&0xFFFFFFF;
-      std::u32string_view sv(dp->buff.data() + std::distance(dp->buff.begin(), it), words);
+      std::u32string_view sv(dp.buff.data() + std::distance(dp.buff.begin(), it), words);
       // std::u32string_view sv(it, it+words); //c++20 :(
       ProcessEvent(sv, dp, dpc);
       clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ev_end);
@@ -140,43 +140,43 @@ void StraxFormatter::ProcessDatapacket(std::unique_ptr<data_packet> dp){
     } else {
       if (missed) {
         fLog->Entry(MongoLog::Warning, "Missed an event from %i at idx %x/%x (%x)",
-            dp->digi->bid(), std::distance(dp->buff.begin(), it), dp->buff.size(), *it);
+            dp.digi->bid(), std::distance(dp.buff.begin(), it), dp.buff.size(), *it);
         missed = false;
       }
       it++;
     }
-  } while (it < dp->buff.end() && fActive == true);
+  } while (it < dp.buff.end() && fActive == true);
   clock_gettime(CLOCK_THREAD_CPUTIME_ID, &dp_end);
   fProcTimeDP += timespec_subtract(dp_end, dp_start);
-  fBytesProcessed += dp->buff.size()*sizeof(char32_t);
+  fBytesProcessed += dp.buff.size()*sizeof(char32_t);
   fEvPerDP[evs_this_dp]++;
   {
     const std::lock_guard<std::mutex> lk(fDPC_mutex);
     for (auto& p : dpc) fDataPerChan[p.first] += p.second;
   }
-  fInputBufferSize -= dp->buff.size()*sizeof(char32_t);
+  fInputBufferSize -= dp.buff.size()*sizeof(char32_t);
 }
 
 int StraxFormatter::ProcessEvent(std::u32string_view buff,
-    const std::unique_ptr<data_packet>& dp, std::map<int, int>& dpc) {
+    const data_packet& dp, std::map<int, int>& dpc) {
   // buff = start of event
 
   struct timespec ch_start, ch_end;
 
   // returns {words this event, channel mask, board fail, header timestamp}
-  auto [words, channel_mask, fail, event_time] = dp->digi->UnpackEventHeader(buff);
+  auto [words, channel_mask, fail, event_time] = dp.digi->UnpackEventHeader(buff);
 
   if(fail){ // board fail
     //GenerateArtificialDeadtime(((dp->clock_counter<<31) + dp->header_time), dp->digi);
-    dp->digi->CheckFail(true);
-    fFailCounter[dp->digi->bid()]++;
+    dp.digi->CheckFail(true);
+    fFailCounter[dp.digi->bid()]++;
     return event_header_words;
   }
 
   buff.remove_prefix(event_header_words);
   int ret;
   int frags(0);
-  unsigned n_chan = dp->digi->GetNumChannels();
+  unsigned n_chan = dp.digi->GetNumChannels();
 
   for(unsigned ch=0; ch<n_chan; ch++){
     if (channel_mask & (1<<ch)) {
@@ -193,18 +193,18 @@ int StraxFormatter::ProcessEvent(std::u32string_view buff,
 
 int StraxFormatter::ProcessChannel(std::u32string_view buff, int words_in_event,
     int channel_mask, uint32_t event_time, int& frags, int channel,
-    const std::unique_ptr<data_packet>& dp, std::map<int, int>& dpc) {
+    const data_packet& dp, std::map<int, int>& dpc) {
   // buff points to the first word of the channel's data
 
   int n_channels = std::bitset<max_channels>(channel_mask).count();
   // returns {timestamp (ns), words this channel, baseline, waveform}
-  auto [timestamp, channel_words, baseline_ch, wf] = dp->digi->UnpackChannelHeader(
-      buff, dp->clock_counter, dp->header_time, event_time, words_in_event, n_channels);
+  auto [timestamp, channel_words, baseline_ch, wf] = dp.digi->UnpackChannelHeader(
+      buff, dp.clock_counter, dp.header_time, event_time, words_in_event, n_channels);
 
   uint32_t samples_in_pulse = wf.size()*sizeof(char32_t)/sizeof(uint16_t);
-  uint16_t sw = dp->digi->SampleWidth();
+  uint16_t sw = dp.digi->SampleWidth();
   int samples_per_frag= fFragmentBytes>>1;
-  int16_t global_ch = fOptions->GetChannel(dp->digi->bid(), channel);
+  int16_t global_ch = fOptions->GetChannel(dp.digi->bid(), channel);
   // Failing to discern which channel we're getting data from seems serious enough to throw
   if(global_ch==-1)
     throw std::runtime_error("Failed to parse channel map. I'm gonna just kms now.");
@@ -238,7 +238,7 @@ int StraxFormatter::ProcessChannel(std::u32string_view buff, int words_in_event,
     for (; samples_this_frag < samples_per_frag; samples_this_frag++)
       fragment.append((char*)&zero_filler, sizeof(zero_filler));
 
-    AddFragmentToBuffer(std::move(fragment), event_time, dp->clock_counter);
+    AddFragmentToBuffer(std::move(fragment), event_time, dp.clock_counter);
   } // loop over frag_i
   dpc[global_ch] += samples_in_pulse*sizeof(uint16_t);
   return channel_words;
@@ -276,7 +276,7 @@ void StraxFormatter::AddFragmentToBuffer(std::string fragment, uint32_t ts, int 
   }
 }
 
-void StraxFormatter::ReceiveDatapackets(std::list<std::unique_ptr<data_packet>>& in, int bytes) {
+void StraxFormatter::ReceiveDatapackets(std::list<data_packet>& in, int bytes) {
   {
     const std::lock_guard<std::mutex> lk(fBufferMutex);
     fBufferCounter[in.size()]++;
@@ -293,7 +293,7 @@ void StraxFormatter::Process() {
   ss<<fHostname<<'_'<<fThreadId;
   fFullHostname = ss.str();
   fActive = true;
-  std::unique_ptr<data_packet> dp;
+  data_packet dp;
   while (fActive == true || fBuffer.size() > 0) {
     std::unique_lock<std::mutex> lk(fBufferMutex);
     fCV.wait(lk, [&]{return fBuffer.size() > 0 || fActive == false;});

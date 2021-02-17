@@ -15,34 +15,11 @@
 #include <list>
 #include <memory>
 #include <string_view>
+#include "DataPacket.hh"
 
 class Options;
 class MongoLog;
 class V1724;
-
-struct data_packet{
-  data_packet() : clock_counter(0), header_time(0) {}
-  data_packet(std::u32string s, uint32_t ht, long cc) :
-      buff(std::move(s)), clock_counter(cc), header_time(ht) {}
-  data_packet(const data_packet& rhs)=delete;
-  data_packet(data_packet&& rhs) : buff(std::move(rhs.buff)),
-      clock_counter(rhs.clock_counter), header_time(rhs.header_time), digi(rhs.digi) {}
-  ~data_packet() {buff.clear(); digi.reset();}
-
-  data_packet& operator=(const data_packet& rhs)=delete;
-  data_packet& operator=(data_packet&& rhs) {
-    buff=std::move(rhs.buff);
-    clock_counter=rhs.clock_counter;
-    header_time=rhs.header_time;
-    digi=rhs.digi;
-    return *this;
-  }
-
-  std::u32string buff;
-  long clock_counter;
-  uint32_t header_time;
-  std::shared_ptr<V1724> digi;
-};
 
 class StraxFormatter{
   /*
@@ -58,14 +35,14 @@ public:
   void Process();
   std::pair<int, int> GetBufferSize() {return {fInputBufferSize.load(), fOutputBufferSize.load()};}
   void GetDataPerChan(std::map<int, int>& ret);
-  void ReceiveDatapackets(std::list<std::unique_ptr<data_packet>>&, int);
+  void ReceiveDatapackets(std::list<data_packet>&, int);
 
 private:
-  void ProcessDatapacket(std::unique_ptr<data_packet> dp);
-  int ProcessEvent(std::u32string_view, const std::unique_ptr<data_packet>&,
+  void ProcessDatapacket(data_packet dp);
+  int ProcessEvent(std::u32string_view, const data_packet&,
       std::map<int, int>&);
   int ProcessChannel(std::u32string_view, int, int, uint32_t, int&, int,
-      const std::unique_ptr<data_packet>&, std::map<int, int>&);
+      const data_packet&, std::map<int, int>&);
   void WriteOutChunk(int);
   void WriteOutChunks();
   void End();
@@ -108,7 +85,7 @@ private:
   std::thread::id fThreadId;
   std::condition_variable fCV;
   std::mutex fBufferMutex;
-  std::list<std::unique_ptr<data_packet>> fBuffer;
+  std::list<data_packet> fBuffer;
 };
 
 #endif

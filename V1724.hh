@@ -8,10 +8,10 @@
 #include <memory>
 #include <atomic>
 #include <tuple>
+#include "DataPacket.hh"
 
 class MongoLog;
 class Options;
-class data_packet;
 
 class V1724{
 
@@ -19,7 +19,7 @@ class V1724{
   V1724(std::shared_ptr<MongoLog>&, std::shared_ptr<Options>&, int, int, int, unsigned=0);
   virtual ~V1724();
 
-  virtual int Read(std::unique_ptr<data_packet>&);
+  virtual int Read(data_packet&);
   virtual int WriteRegister(unsigned int reg, unsigned int value);
   virtual unsigned int ReadRegister(unsigned int reg);
   virtual int End();

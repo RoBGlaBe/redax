@@ -1,7 +1,6 @@
 #include "V1724.hh"
 #include "MongoLog.hh"
 #include "Options.hh"
-#include "StraxFormatter.hh"
 #include <algorithm>
 #include <cmath>
 #include <CAENVMElib.h>
@@ -216,7 +215,7 @@ unsigned int V1724::ReadRegister(unsigned int reg){
   return temp;
 }
 
-int V1724::Read(std::unique_ptr<data_packet>& outptr){
+int V1724::Read(data_packet& outptr){
   if ((GetAcquisitionStatus() & 0x8) == 0) return 0;
   // Initialize
   int blt_words=0, nb=0, ret=-5;
@@ -270,7 +269,7 @@ int V1724::Read(std::unique_ptr<data_packet>& outptr){
     }
     fBLTCounter[count]++;
     auto [ht, cc] = GetClockInfo(s);
-    outptr = std::make_unique<data_packet>(std::move(s), ht, cc);
+    outptr = data_packet(std::move(s), ht, cc);
   }
   for (auto b : xfer_buffers) delete[] b.first;
   return blt_words;
